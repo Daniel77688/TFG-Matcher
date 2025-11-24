@@ -27,14 +27,14 @@ class DataProcessor:
                     for row_num, row in enumerate(reader):                                          # Iterar sobre cada fila del CSV y devvuelve pares (numero de fila -> indice, fila -> diccionario)
                         cleaned_row = {}                                                            # Diccionario para almacenar la fila limpia
                         for key, value in row.items():                                              # Limpiar claves y valores
-                            if key and key.strip().upper() in RELEVANT_FIELDS:
+                            if key:
                                 cleaned_key = key.strip().upper()                                   # Eliminar espacios y convertir a mayusculas las columnas
                                 cleaned_row[cleaned_key] = (value or "").strip()                    # Eliminar espacios de los valores y para valores nulos asignar cadena vacia
                         
                         doc_data = self._extract_relevant_info(cleaned_row, csv_path, row_num)
                         if doc_data:
                             documents.append(doc_data)                                              # Añadir el documento procesado a la lista
-
+                break                                                                   # Si se lee correctamente, salir del bucle de codificaciones
             except UnicodeDecodeError:
                 continue
 
@@ -42,21 +42,28 @@ class DataProcessor:
     
 
     def _extract_relevant_info(self, row: Dict[str, str], csv_path: Path, row_num: int) -> Dict[str, Any]:  # Extraer la informacion relevante de una fila CSV
-        nombre_profesor = csv_path.stem.replace("_", "").title()             # Obtener el nombre del profesor del nombre del archivo
+        nombre_profesor = csv_path.stem.replace("_", " ").title()             # Obtener el nombre del profesor del nombre del archivo
 
         semantic_text = self._build_semantic_text(row)                       # Convierte en un texto liso la informacion relevante para sacar embeddings
 
         if not semantic_text.strip():                                        # Si el texto semantico esta vacio no hay que procesar esta fila
             return None
         
-        
-        metadata = {field.lower().replace(" ", "_"): row.get(field, "") for field in RELEVANT_FIELDS}
-        metadata.update({
+        metadata = {
             "profesor": nombre_profesor,
             "profesor_username": nombre_profesor.lower().replace(" ", "."),
+            "titulo": row.get("TÍTULO", ""),
+            "autores": row.get("AUTORES", ""),
+            "fecha": row.get("FECHA", ""),
+            "tipo": row.get("TIPO", ""),
+            "tipo_produccion": row.get("TIPO DE PRODUCCIÓN", ""),
+            "categorias": row.get("CATEGORÍAS", ""),
+            "fuente": row.get("FUENTE", ""),
+            "if_sjr": row.get("IF SJR", ""),
+            "q_sjr": row.get("Q SJR", ""),
             "csv_file": csv_path.name,
             "row_number": row_num
-        })                                                                   # Construir los metadatos del documento
+        }                                                                  # Construir los metadatos del documento
 
         return {
             "id": str(uuid.uuid4()),                                         # Generar un ID unico para el documento
@@ -68,10 +75,21 @@ class DataProcessor:
     def _build_semantic_text(self, row: Dict[str, str]) -> str:         # Construir el texto semantico a partir de los campos relevantes
         partes = []                                                     # Lista para almacenar las partes del texto
         
-        for campo in RELEVANT_FIELDS:                                   # Iterar sobre los campos relevantes
-            if(row.get(campo)):                                         # Si el campo existe y no es vacio
-                partes.append(f"{campo.title()}: {row[campo]}")         # Añadir el campo y su valor al texto semantico
+        campo_map = {
+            "TÍTULO": "Título",
+            "AUTORES": "Autores",
+            "TIPO": "Tipo",
+            "TIPO DE PRODUCCIÓN": "Tipo de producción",
+            "CATEGORÍAS": "Categorías",
+            "FUENTE": "Fuente",
+            "IF SJR": "Impacto SJR",
+            "Q SJR": "Cuartil SJR"
+        }
         
+        for campo_csv, campo_display in campo_map.items():
+            if row.get(campo_csv):
+                partes.append(f"{campo_display}: {row[campo_csv]}") 
+
         return " ".join(partes)                                         # Unir todas las partes en un solo texto separado por espacios          
 
 
@@ -139,13 +157,13 @@ class DataProcessor:
         return coleccion
     
 
-    def get_chroma_collection():                          # Obtener la coleccion de ChromaDB
-        client = chromadb.PersistentClient(
-            path=str(CHROMA_DIR),
-            settings=Settings(anonymized_telemetry=False)
-        )
-        try:
-            return client.get_collection(COLLECTION_NAME)
-        except:
-            print(f"ERROR: La colección '{COLLECTION_NAME}' no existe.")
-            return None
+def get_chroma_collection():                          # Obtener la coleccion de ChromaDB
+    client = chromadb.PersistentClient(
+        path=str(CHROMA_DIR),
+        settings=Settings(anonymized_telemetry=False)
+    )
+    try:
+        return client.get_collection(COLLECTION_NAME)
+    except:
+        print(f"ERROR: La colección '{COLLECTION_NAME}' no existe.")
+        return None    

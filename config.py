@@ -24,3 +24,7 @@ RELEVANT_FIELDS = [
     "IF SJR",
     "Q SJR"
 ]
+
+
+# Ruta de mi carpeta : cd C:\Users\danie\TFG_Scraper
+# Comando activar env: .\venv\Scripts\activate
