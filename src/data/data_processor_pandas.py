@@ -1,11 +1,16 @@
-import uuid # Para generar IDs unicos
+import uuid
 from pathlib import Path
 from typing import List, Dict, Any, Tuple
 from sentence_transformers import SentenceTransformer
 import chromadb
 from chromadb.config import Settings
 import pandas as pd
-from src.config.config import CSV_DIR, CHROMA_DIR2, EMBEDDING_MODEL, COLLECTION_NAME
+import logging
+
+from src.config.config import CSV_DIR, CHROMA_DIR, EMBEDDING_MODEL, COLLECTION_NAME
+from src.utils.text_utils import normalize_text, generate_username
+
+logger = logging.getLogger(__name__)
 
 # =========================================================================================
 # 1. Carga y procesa CSVs:                               load_all_csvs + _process_dataframe
@@ -13,56 +18,50 @@ from src.config.config import CSV_DIR, CHROMA_DIR2, EMBEDDING_MODEL, COLLECTION_
 # 3. Insertar documentos y embeddings en la coleccion:   load_data_to_chroma
 # =========================================================================================
 
-class DataProcessorPandas:
-    def __init__(self):
-        self.model = SentenceTransformer(EMBEDDING_MODEL) # Aqui cargamos el modelo de IA : Convierte texto a vectores numericos.Any
-        self.client = chromadb.PersistentClient(
-            path=str(CHROMA_DIR2),
-            settings=Settings(anonymized_telemetry=False)
-        ) # Conexion con la BD de forma persistente y asi no se borran los datos a pesar de apagar el PC
 
+class DataProcessorPandas:
+    """Procesa archivos CSV de profesores y los carga en ChromaDB con embeddings semánticos."""
+
+    def __init__(self):
+        self.model = SentenceTransformer(EMBEDDING_MODEL)
+        self.client = chromadb.PersistentClient(
+            path=str(CHROMA_DIR),
+            settings=Settings(anonymized_telemetry=False),
+        )
 
     def load_all_csvs(self) -> Tuple[List[str], List[str], List[Dict], List[List[float]]]:
-        all_ids = []
-        all_documents = []
-        all_metadatas = []
-        all_embeddings = []
+        """Lee todos los CSV del directorio, genera texto semántico y embeddings."""
+        all_ids: List[str] = []
+        all_documents: List[str] = []
+        all_metadatas: List[Dict] = []
+        all_embeddings: List[List[float]] = []
 
         csv_files = list(CSV_DIR.glob("*.csv"))
-        print(f"> Se encontraron {len(csv_files)} CSV files...")
+        logger.info("Se encontraron %d archivos CSV", len(csv_files))
 
         for csv_file in csv_files:
-            print(f"    - Procesando {csv_file.name} (con Pandas)")
+            logger.info("Procesando %s (Pandas)", csv_file.name)
             try:
-                df = pd.read_csv(csv_file, encoding='utf-8', on_bad_lines='skip')
+                df = pd.read_csv(csv_file, encoding="utf-8", on_bad_lines="skip")
             except UnicodeDecodeError:
                 try:
-                    df = pd.read_csv(csv_file, encoding='latin-1', on_bad_lines='skip')
+                    df = pd.read_csv(csv_file, encoding="latin-1", on_bad_lines="skip")
                 except Exception as e:
-                    print(f"      ! Error leyendo {csv_file.name}: {e}")
+                    logger.warning("Error leyendo %s: %s", csv_file.name, e)
                     continue
 
-            # Limpieza básica: Eliminamos columnas vacías o filas totalmente vacías
-            df.dropna(how='all', inplace=True)
-            
-            # [EXPLICACION]: En lugar de limpiar espacios fila por fila:
-            #   cleaned_key = key.strip().upper()
-            # Pandas nos permite limpiar todos los nombres de columnas de golpe:
+            # Limpieza básica
+            df.dropna(how="all", inplace=True)
             df.columns = df.columns.astype(str).str.strip().str.upper()
-            
-            # Y limpiar todos los valores de texto del dataframe de una sola vez:
             df = df.apply(lambda x: x.str.strip() if x.dtype == "object" else x)
-            df.fillna("", inplace=True) # Reemplazamos Nones/NaNs con cadena vacía
+            df.fillna("", inplace=True)
 
-            # Preparamos los datos
             ids, documents, metadatas = self._process_dataframe(df, csv_file)
-            
+
             if not documents:
                 continue
 
-            # [EXPLICACION - VELOCIDAD]: Aquí está la magia.
-            # Aquí tienes una lista de textos y se la pasas TODA DE GOLPE al modelo.
-            # El modelo puede procesar en paralelo internamente. Es mucho más rápido.
+            # Encodear todos los documentos de golpe (mucho más rápido que uno a uno)
             embeddings = self.model.encode(documents).tolist()
 
             all_ids.extend(ids)
@@ -72,14 +71,16 @@ class DataProcessorPandas:
 
         return all_ids, all_documents, all_metadatas, all_embeddings
 
-    def _process_dataframe(self, df: pd.DataFrame, csv_path: Path) -> Tuple[List[str], List[str], List[Dict]]:
-        ids = []
-        documents_text = []
-        metadatas = []
+    def _process_dataframe(
+        self, df: pd.DataFrame, csv_path: Path
+    ) -> Tuple[List[str], List[str], List[Dict]]:
+        """Procesa un DataFrame y devuelve IDs, textos semánticos y metadatos."""
+        ids: List[str] = []
+        documents_text: List[str] = []
+        metadatas: List[Dict] = []
 
         nombre_profesor = csv_path.stem.replace("_", " ").title()
-        
-        # Mapa de columnas para el texto semántico
+
         campo_map = {
             "TÍTULO": "Título",
             "AUTORES": "Autores",
@@ -88,41 +89,36 @@ class DataProcessorPandas:
             "CATEGORÍAS": "Categorías",
             "FUENTE": "Fuente",
             "IF SJR": "Impacto SJR",
-            "Q SJR": "Cuartil SJR"
+            "Q SJR": "Cuartil SJR",
         }
 
-        # [EXPLICACION]: Iteramos sobre el DataFrame. 
-        # Aunque seguimos usando un bucle, iterar sobre filas en memoria ya limpia es rápido.
         for index, row in df.iterrows():
             # Construcción del texto semántico
-            # Equivalente a tu método _build_semantic_text
             partes = []
             for col_csv, col_display in campo_map.items():
                 if col_csv in df.columns and row[col_csv]:
                     partes.append(f"{col_display}: {row[col_csv]}")
-            
-            semantic_text = " ".join(partes)
 
-            if not semantic_text.strip():
+            semantic_text = normalize_text(" ".join(partes))
+
+            if not semantic_text:
                 continue
 
-            # Construcción de metadatos (Igual que tu _extract_relevant_info)
-            # Nota: Pandas usa 'get' de forma similar a los diccionarios si convertimos la serie,
-            # pero aquí accedemos directamente con seguridad.
+            # Metadatos normalizados
             metadata = {
                 "profesor": nombre_profesor,
-                "profesor_username": nombre_profesor.lower().replace(" ", "."),
-                "titulo": str(row.get("TÍTULO", "")),
+                "profesor_username": generate_username(nombre_profesor),
+                "titulo": normalize_text(str(row.get("TÍTULO", ""))),
                 "autores": str(row.get("AUTORES", "")),
                 "fecha": str(row.get("FECHA", "")),
                 "tipo": str(row.get("TIPO", "")),
-                "tipo_produccion": str(row.get("TIPO DE PRODUCCIÓN", "")),
-                "categorias": str(row.get("CATEGORÍAS", "")),
+                "tipo_produccion": normalize_text(str(row.get("TIPO DE PRODUCCIÓN", ""))),
+                "categorias": normalize_text(str(row.get("CATEGORÍAS", ""))),
                 "fuente": str(row.get("FUENTE", "")),
                 "if_sjr": str(row.get("IF SJR", "")),
                 "q_sjr": str(row.get("Q SJR", "")),
                 "csv_file": csv_path.name,
-                "row_number": index # Pandas mantiene el índice original
+                "row_number": index,
             }
 
             ids.append(str(uuid.uuid4()))
@@ -132,59 +128,57 @@ class DataProcessorPandas:
         return ids, documents_text, metadatas
 
     def setup_chroma_collection(self):
-        # Este método es IDÉNTICO al original. Pandas solo cambia CÓMO leemos los datos,
-        # no DÓNDE los guardamos.
+        """Crea (o recrea) la colección en ChromaDB."""
         try:
             self.client.delete_collection(COLLECTION_NAME)
-            print(f"> Coleccion '{COLLECTION_NAME}' eliminada.")
-        except:
-            print(f"> Coleccion '{COLLECTION_NAME}' no existe. Creando una nueva...")
-        
+            logger.info("Colección '%s' eliminada", COLLECTION_NAME)
+        except Exception:
+            logger.info("Colección '%s' no existía, creando nueva...", COLLECTION_NAME)
+
         coleccion = self.client.create_collection(
-                name=COLLECTION_NAME,
-                metadata={
-                    "description": "Base de datos de profesores URJC para busqueda de tutor en TFGs y TFMs",
-                    "model": EMBEDDING_MODEL
-                }
-            )    
+            name=COLLECTION_NAME,
+            metadata={
+                "description": "Base de datos de profesores URJC para búsqueda de tutor TFG/TFM",
+                "model": EMBEDDING_MODEL,
+            },
+        )
         return coleccion
-    
+
     def load_data_to_chroma(self, batch_size: int = 1000):
-        # También IDÉNTICO al original en lógica.
-        # Llamamos a nuestra versión Pandas de load_all_csvs
+        """Carga todos los datos procesados en ChromaDB por lotes."""
         ids, documents, metadatas, embeddings = self.load_all_csvs()
 
         if not ids:
-            print("ERROR: No hay datos para cargar.")
-            return
-        
+            logger.error("No hay datos para cargar")
+            return None
+
         coleccion = self.setup_chroma_collection()
 
-        print(f"> Cargando {len(ids)} documentos en lotes de {batch_size}...")
+        logger.info("Cargando %d documentos en lotes de %d...", len(ids), batch_size)
         for i in range(0, len(ids), batch_size):
             batch_end = min(i + batch_size, len(ids))
             batch_num = i // batch_size + 1
-            print(f"    - Cargando lote {batch_num}: {i+1}-{batch_end}")
-                
+            logger.info("Cargando lote %d: %d-%d", batch_num, i + 1, batch_end)
+
             coleccion.add(
                 ids=ids[i:batch_end],
                 documents=documents[i:batch_end],
                 metadatas=metadatas[i:batch_end],
-                embeddings=embeddings[i:batch_end]    
+                embeddings=embeddings[i:batch_end],
             )
 
-        print(f"> Carga completa en ChromaDB. Total de documentos cargados: {coleccion.count()}")
+        logger.info("Carga completa. Total documentos: %d", coleccion.count())
         return coleccion
-    
 
 
-def get_chroma_collection():                          # Obtener la coleccion de ChromaDB
+def get_chroma_collection():
+    """Obtiene la colección de ChromaDB existente (sin recrearla)."""
     client = chromadb.PersistentClient(
-        path=str(CHROMA_DIR2),
-        settings=Settings(anonymized_telemetry=False)
+        path=str(CHROMA_DIR),
+        settings=Settings(anonymized_telemetry=False),
     )
     try:
         return client.get_collection(COLLECTION_NAME)
-    except:
-        print(f"ERROR: La colección '{COLLECTION_NAME}' no existe.")
-        return None    
+    except Exception:
+        logger.error("La colección '%s' no existe. Ejecuta data_loader.py primero.", COLLECTION_NAME)
+        return None

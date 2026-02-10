@@ -1,3 +1,27 @@
-chromadb==0.4.15
-sentence-transformers==5.1.2
-pandas
+# === Core ===
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+python-dotenv>=1.0.0
+python-multipart>=0.0.6
+
+# === Base de Datos ===
+chromadb>=0.4.15
+sqlmodel>=0.0.14
+SQLAlchemy>=2.0.0
+
+# === IA y NLP ===
+sentence-transformers>=2.2.0
+langchain>=0.1.0
+langchain-openai>=0.0.5
+
+# === Procesamiento de Datos ===
+pandas>=2.0.0
+
+# === Autenticación ===
+bcrypt>=4.0.0
+email-validator>=2.0.0
+pyjwt>=2.8.0
+
+# === Testing ===
+pytest>=7.4.0
+httpx>=0.25.0

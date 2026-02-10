@@ -1,0 +1,15 @@
+__pycache__
+*.pyc
+*.pyo
+venv/
+.env
+.git
+.github
+.gitignore
+*.db
+chroma_db/
+data/csv/
+tests/
+*.md
+.vscode/
+.idea/

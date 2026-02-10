@@ -1,15 +1,23 @@
 # ---- ENTORNOS VIRTUALES ----
 venv/
-.env/
+.venv/
+
+# ---- VARIABLES DE ENTORNO ----
+.env
 *.env
 
 # ---- ARCHIVOS TEMPORALES DE PYTHON ----
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
 
-# ---- BASE DE DATOS DE CHROMADB ----
+# ---- BASE DE DATOS ----
 chroma_db/
+*.db
 
 # ---- DATOS GRANDES ----
 data/*.csv
@@ -19,6 +27,16 @@ data/csv/
 data/*.zip
 data/*.exe
 
-# ---- MAC / WINDOWS ARCHIVOS DE SISTEMA ----
+# ---- TESTING ----
+.pytest_cache/
+htmlcov/
+.coverage
+
+# ---- IDE ----
+.vscode/
+.idea/
+.gemini/
+
+# ---- OS ----
 .DS_Store
 Thumbs.db

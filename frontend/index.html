@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="TFG Scraper Pro — Sistema inteligente de recomendación de tutores TFG para la URJC. Búsqueda semántica y asistente IA.">
+    <meta name="author" content="Daniel">
+    <meta property="og:title" content="TFG Scraper Pro - URJC">
+    <meta property="og:description" content="Encuentra el tutor perfecto para tu Trabajo de Fin de Grado">
+    <meta property="og:type" content="website">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎓</text></svg>">
+    <title>TFG Scraper Pro - URJC</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <!-- Header -->
+    <header class="header" role="banner">
+        <div class="header-content">
+            <a href="#" class="logo" onclick="loadPage('home'); return false;" aria-label="Inicio">🎓 TFG Scraper</a>
+            <nav class="nav-menu" role="navigation" aria-label="Menú principal">
+                <button class="nav-btn" onclick="loadPage('home')" aria-label="Ir a Inicio">🏠 Inicio</button>
+                <button class="nav-btn" onclick="loadPage('search')" aria-label="Ir a Búsqueda">🔍 Búsqueda</button>
+                <button class="nav-btn" onclick="loadPage('chat')" aria-label="Ir al Asistente IA">🤖 Asistente</button>
+                <button class="nav-btn" onclick="loadPage('compare')" aria-label="Ir a Comparar">📊 Comparar</button>
+                <button class="nav-btn" onclick="loadPage('recommendations')" aria-label="Ir a Recomendaciones">💡 Recomendaciones</button>
+                <div class="profile-dropdown">
+                    <button class="profile-btn" id="profileBtn" onclick="toggleProfileMenu()" aria-haspopup="true" aria-expanded="false">👤 <span id="usernameDisplay">Usuario</span></button>
+                    <div class="dropdown-menu" id="profileMenu" role="menu">
+                        <a href="#" role="menuitem" onclick="loadPage('profile'); toggleProfileMenu(); return false;">👤 Mi Perfil</a>
+                        <a href="#" role="menuitem" onclick="loadPage('history'); toggleProfileMenu(); return false;">📜 Historial</a>
+                        <a href="#" role="menuitem" onclick="logout(); return false;">🚪 Cerrar Sesión</a>
+                    </div>
+                </div>
+                <button class="nav-btn theme-toggle" id="themeToggle" onclick="toggleDarkMode()" aria-label="Cambiar tema" title="Cambiar tema">🌙</button>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content" id="mainContent" role="main">
+        <!-- Login/Register -->
+        <div id="authPage" class="page">
+            <div class="auth-container">
+                <h1 class="main-title">🎓 TFG Scraper Pro</h1>
+                <p class="subtitle">Tu asistente para encontrar el tutor perfecto</p>
+                
+                <div class="tabs" role="tablist">
+                    <button class="tab-btn active" role="tab" aria-selected="true" onclick="switchTab('login')">🔑 Iniciar Sesión</button>
+                    <button class="tab-btn" role="tab" aria-selected="false" onclick="switchTab('register')">📝 Crear Cuenta</button>
+                </div>
+
+                <form id="loginForm" class="auth-form" onsubmit="event.preventDefault(); login();">
+                    <label for="loginUsername" class="sr-only">Usuario</label>
+                    <input type="text" id="loginUsername" placeholder="Usuario" required autocomplete="username">
+                    <label for="loginPassword" class="sr-only">Contraseña</label>
+                    <input type="password" id="loginPassword" placeholder="Contraseña" required autocomplete="current-password">
+                    <button type="submit" class="btn-primary">Entrar</button>
+                </form>
+
+                <form id="registerForm" class="auth-form" style="display: none;" onsubmit="event.preventDefault(); register();">
+                    <label for="regUsername" class="sr-only">Usuario</label>
+                    <input type="text" id="regUsername" placeholder="Usuario" required autocomplete="username">
+                    <label for="regEmail" class="sr-only">Email</label>
+                    <input type="email" id="regEmail" placeholder="Email" required autocomplete="email">
+                    <label for="regPassword" class="sr-only">Contraseña</label>
+                    <input type="password" id="regPassword" placeholder="Contraseña (mín. 8 caracteres, mayúscula, minúscula, número)" required autocomplete="new-password">
+                    <label for="regPassword2" class="sr-only">Confirmar Contraseña</label>
+                    <input type="password" id="regPassword2" placeholder="Confirmar Contraseña" required autocomplete="new-password">
+                    <button type="submit" class="btn-primary">Registrarse</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Home Page -->
+        <div id="homePage" class="page" style="display: none;">
+            <h1 class="main-title">📊 Dashboard</h1>
+            <div class="stats-grid" id="statsGrid">
+                <!-- Stats se cargarán aquí -->
+            </div>
+            <div id="infoLists" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 2rem;">
+                <!-- Listas se cargarán aquí -->
+            </div>
+        </div>
+
+        <!-- Search Page -->
+        <div id="searchPage" class="page" style="display: none;">
+            <h1 class="main-title">🔍 Búsqueda de Tutores</h1>
+            
+            <div class="tabs" role="tablist">
+                <button class="tab-btn active" role="tab" onclick="switchSearchTab('theme')">📝 Por Tema</button>
+                <button class="tab-btn" role="tab" onclick="switchSearchTab('professor')">👨‍🏫 Por Profesor</button>
+            </div>
+
+            <!-- Búsqueda por Tema -->
+            <div id="themeSearch" class="search-tab">
+                <div class="search-form">
+                    <label for="themeQuery" class="sr-only">Tema de búsqueda</label>
+                    <input type="text" id="themeQuery" placeholder="Ej: Machine Learning, IA, Ciberseguridad..." class="search-input" aria-label="Tema de búsqueda">
+                    <label for="themeLimit" class="sr-only">Número de resultados</label>
+                    <input type="number" id="themeLimit" value="10" min="5" max="50" class="limit-input" aria-label="Número de resultados">
+                    <div class="filters">
+                        <select id="typeFilter" aria-label="Filtrar por tipo">
+                            <option value="">Todos los tipos</option>
+                        </select>
+                        <select id="quartileFilter" aria-label="Filtrar por cuartil">
+                            <option value="">Todos</option>
+                            <option value="Q1">Q1</option>
+                            <option value="Q2">Q2</option>
+                            <option value="Q3">Q3</option>
+                            <option value="Q4">Q4</option>
+                        </select>
+                        <input type="number" id="minIF" placeholder="IF Mínimo" step="0.1" min="0" aria-label="Impacto mínimo SJR">
+                    </div>
+                    <button class="btn-primary" onclick="searchByTheme()">🔍 Buscar</button>
+                </div>
+                <div id="themeResults" class="results-container"></div>
+            </div>
+
+            <!-- Búsqueda por Profesor -->
+            <div id="professorSearch" class="search-tab" style="display: none;">
+                <div class="search-form">
+                    <label for="professorName" class="sr-only">Nombre del profesor</label>
+                    <input type="text" id="professorName" placeholder="Ej: Martín Barroso Estefanía" class="search-input" aria-label="Nombre del profesor">
+                    <button class="btn-primary" onclick="searchByProfessor()">🔍 Buscar Profesor</button>
+                </div>
+                <div id="professorResults" class="results-container"></div>
+            </div>
+        </div>
+
+        <!-- Chat Page -->
+        <div id="chatPage" class="page" style="display: none;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                <h1 class="main-title" style="margin: 0;">🤖 Asistente IA</h1>
+                <button class="btn-secondary" onclick="clearChat()">🗑️ Nuevo Chat</button>
+            </div>
+            <div id="chatContainer" class="chat-container" role="log" aria-live="polite" aria-label="Conversación con el asistente"></div>
+            <div class="chat-input-container">
+                <label for="chatInput" class="sr-only">Mensaje para el asistente</label>
+                <input type="text" id="chatInput" placeholder="Pregunta sobre TFG, tutores, ideas de proyectos..." class="chat-input">
+                <button class="btn-primary" onclick="sendChatMessage()">Enviar</button>
+            </div>
+        </div>
+
+        <!-- Compare Page -->
+        <div id="comparePage" class="page" style="display: none;">
+            <h1 class="main-title">📊 Comparar Profesores</h1>
+            <div id="compareContainer" class="compare-container"></div>
+        </div>
+
+        <!-- Profile Page -->
+        <div id="profilePage" class="page" style="display: none;">
+            <h1 class="main-title">👤 Mi Perfil</h1>
+            <div class="profile-container">
+                <div class="profile-sidebar">
+                    <div id="profileAvatar" class="avatar" aria-hidden="true"></div>
+                    <h3 id="profileUsername"></h3>
+                    <p id="profileEmail"></p>
+                    <button class="btn-secondary" onclick="logout()">🚪 Cerrar Sesión</button>
+                </div>
+                <form class="profile-form" onsubmit="event.preventDefault(); saveProfile();">
+                    <h3>Editar Perfil</h3>
+                    <label for="profileFullName" class="sr-only">Nombre Completo</label>
+                    <input type="text" id="profileFullName" placeholder="Nombre Completo">
+                    <label for="profileDegree" class="sr-only">Grado</label>
+                    <input type="text" id="profileDegree" placeholder="Grado (ej: Ingeniería Informática)">
+                    <label for="profileYear" class="sr-only">Año</label>
+                    <input type="number" id="profileYear" placeholder="Año" min="1" max="4">
+                    <label for="profileInterests" class="sr-only">Intereses</label>
+                    <textarea id="profileInterests" placeholder="Intereses (ej: Machine Learning, Ciberseguridad...)"></textarea>
+                    <label for="profileSkills" class="sr-only">Habilidades</label>
+                    <input type="text" id="profileSkills" placeholder="Habilidades (ej: Python, Java, React...)">
+                    <label for="profileAreas" class="sr-only">Áreas Preferidas</label>
+                    <input type="text" id="profileAreas" placeholder="Áreas Preferidas (ej: IA, Web, Blockchain...)">
+                    <button type="submit" class="btn-primary">💾 Guardar</button>
+                </form>
+            </div>
+            <div class="history-section">
+                <h3>Historial</h3>
+                <button class="btn-secondary" onclick="clearHistory()">🗑️ Eliminar Historial</button>
+                <div id="historyList"></div>
+            </div>
+        </div>
+
+        <!-- Recommendations Page -->
+        <div id="recommendationsPage" class="page" style="display: none;">
+            <h1 class="main-title">💡 Recomendaciones Personalizadas</h1>
+            <div id="recommendationsContainer" class="results-container"></div>
+        </div>
+
+        <!-- History Page -->
+        <div id="historyPage" class="page" style="display: none;">
+            <h1 class="main-title">📜 Historial</h1>
+            <button class="btn-secondary" onclick="clearHistory()">🗑️ Eliminar Todo el Historial</button>
+            <div id="historyListFull"></div>
+        </div>
+    </main>
+
+    <!-- Modal para Perfil Detallado del Profesor -->
+    <div id="professorModal" class="modal" onclick="if(event.target === this) closeProfessorModal()" role="dialog" aria-modal="true" aria-labelledby="professorModalTitle">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <button class="modal-close" onclick="closeProfessorModal()" aria-label="Cerrar modal">×</button>
+            <div id="professorModalContent"></div>
+            <div class="chart-container" style="height:280px; margin-top:1rem;">
+                <canvas id="professorRadarChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer" role="contentinfo">
+        <div class="footer-content">
+            <p>🎓 <strong>TFG Scraper Pro</strong> — Sistema de Recomendación de Tutores · URJC</p>
+            <p class="footer-links">
+                <a href="/docs" target="_blank" rel="noopener">📄 API Docs</a>
+                <span class="footer-separator">·</span>
+                <a href="https://github.com/Daniel77688" target="_blank" rel="noopener">💻 GitHub</a>
+            </p>
+        </div>
+    </footer>
+
+    <script type="module" src="/static/js/main.js"></script>
+</body>
+</html>
