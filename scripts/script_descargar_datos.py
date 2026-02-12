@@ -232,7 +232,7 @@ def main():
     exitosos = 0
     
     try:
-        for i, profesor in enumerate(profesores, 1):
+        for i, profesor in enumerate(profesores[:5], 1):
             print(f"\n{'='*60}")
             print(f"[{i}/{len(profesores)}] {profesor['nombre']}")
             print(f"{'='*60}")

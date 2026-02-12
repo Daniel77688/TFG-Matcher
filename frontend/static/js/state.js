@@ -2,7 +2,9 @@ export const state = {
     currentUser: null,
     chatHistory: [],
     comparisonList: [],
-    API_BASE: '/api'
+    API_BASE: '/api',
+    // Estado del chat en streaming
+    isChatStreaming: false
 };
 
 export function setCurrentUser(user) {

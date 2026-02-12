@@ -1,0 +1,5 @@
+username,full_name,degree,year,interests,skills,preferred_areas
+"alumno_ml","Sara Fernández","Grado en Ingeniería Informática",4,"Machine Learning; Visión por Computador","Python; PyTorch; Docker","IA; Ciencia de Datos"
+"alumno_ciber","Luis Ramírez","Grado en Ingeniería de Telecomunicaciones",3,"Seguridad de Redes; Hacking Ético","Python; Linux; Redes","Ciberseguridad; Redes"
+"alumno_web","Claudia Navarro","Grado en Ingeniería del Software",3,"UX/UI; Aplicaciones Web","React; Node.js; Figma","Desarrollo Web; SaaS"
+

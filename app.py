@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 
 import pandas as pd
-from fastapi import FastAPI, HTTPException, Query, Depends, Header
+from fastapi import FastAPI, HTTPException, Query, Depends, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, StreamingResponse
@@ -65,6 +65,7 @@ class ChatMessage(BaseModel):
     message: str
     user_id: int
     chat_history: Optional[List[Dict[str, str]]] = None
+    last_feedback_positive: Optional[bool] = None  # True=útil, False=no útil, None=no respondió/prefiere no decir
 
 class HistoryRequest(BaseModel):
     query: str
@@ -119,16 +120,19 @@ try:
     if OPENROUTER_API_KEY:
         from langchain_openai import ChatOpenAI
 
+        # Activamos el modo streaming para poder enviar tokens progresivamente al frontend.
+        # Otros endpoints que usan llm.invoke seguirán funcionando igual, ya que LangChain
+        # se encarga de agrupar los tokens internamente para esas llamadas.
         llm = ChatOpenAI(
             model=MODEL_NAME,
             openai_api_key=OPENROUTER_API_KEY,
             openai_api_base=BASE_URL,
             temperature=0.7,
-            streaming=False,
+            streaming=True,
             max_tokens=800,
             timeout=30,
         )
-        logger.info("✅ LLM configurado: %s", MODEL_NAME)
+        logger.info("✅ LLM configurado (streaming ON): %s", MODEL_NAME)
     else:
         logger.warning("⚠️ OPENROUTER_API_KEY no configurada")
 except Exception as e:
@@ -393,7 +397,12 @@ def _detect_professor_name(message: str) -> Optional[str]:
 
 @app.post("/api/chat", tags=["IA Asistente"])
 async def chat(request: ChatMessage):
-    """Chat con el asistente IA personalizado con RAG avanzado."""
+    """
+    Chat clásico (no streaming) con el asistente IA.
+
+    Se mantiene por compatibilidad, aunque el frontend moderno usará
+    la ruta /api/chat/stream para obtener la respuesta de forma progresiva.
+    """
     if not llm:
         raise HTTPException(
             status_code=503,
@@ -405,15 +414,24 @@ async def chat(request: ChatMessage):
         if not profile:
             raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
-        # RAG: Detectar si el usuario pregunta sobre un profesor
         detected_professor = _detect_professor_name(request.message)
         rag_documents = []
         if detected_professor and search_engine:
-            rag_documents = search_engine.get_professor_documents(detected_professor, limit=15)
-            logger.info("RAG: Detectado profesor '%s', inyectando %d documentos",
-                        detected_professor, len(rag_documents))
+            rag_documents = search_engine.get_professor_documents(
+                detected_professor, limit=15
+            )
+            logger.info(
+                "RAG: Detectado profesor '%s', inyectando %d documentos",
+                detected_professor,
+                len(rag_documents),
+            )
 
-        context = _build_chat_context(profile, rag_documents, detected_professor)
+        context = _build_chat_context(
+            profile,
+            rag_documents,
+            detected_professor,
+            last_feedback_positive=request.last_feedback_positive,
+        )
 
         from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 
@@ -428,7 +446,7 @@ async def chat(request: ChatMessage):
 
         messages.append(HumanMessage(content=request.message))
 
-        logger.info("Generando respuesta IA para usuario %d", request.user_id)
+        logger.info("Generando respuesta IA (modo clásico) para usuario %d", request.user_id)
         response = llm.invoke(messages)
 
         if not response or not hasattr(response, "content"):
@@ -443,13 +461,102 @@ async def chat(request: ChatMessage):
         raise
     except Exception as e:
         logger.error("Error en chat: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Error generando respuesta: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Error generando respuesta: {str(e)}"
+        )
+
+
+@app.post("/api/chat/stream", tags=["IA Asistente"])
+async def chat_stream(payload: ChatMessage, fastapi_request: Request):
+    """
+    Chat en modo streaming, enviando la respuesta token a token.
+
+    El frontend consumirá este endpoint con fetch y un ReadableStream,
+    permitiendo simular el efecto "typing" y poder interrumpir la generación.
+    """
+    from fastapi import Request as FastAPIRequest  # type: ignore
+
+    if not llm:
+        raise HTTPException(
+            status_code=503,
+            detail="Servicio de IA no disponible. Verifica tu API key en .env",
+        )
+
+    try:
+        profile = auth_system.get_profile(payload.user_id)
+        if not profile:
+            raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+        detected_professor = _detect_professor_name(payload.message)
+        rag_documents = []
+        if detected_professor and search_engine:
+            rag_documents = search_engine.get_professor_documents(
+                detected_professor, limit=15
+            )
+            logger.info(
+                "RAG (stream): Detectado profesor '%s', inyectando %d documentos",
+                detected_professor,
+                len(rag_documents),
+            )
+
+        context = _build_chat_context(profile, rag_documents, detected_professor)
+
+        from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+
+        messages = [SystemMessage(content=context)]
+
+        if payload.chat_history:
+            for msg in payload.chat_history:
+                if msg.get("type") == "user":
+                    messages.append(HumanMessage(content=msg.get("content", "")))
+                elif msg.get("type") == "assistant":
+                    messages.append(AIMessage(content=msg.get("content", "")))
+
+        messages.append(HumanMessage(content=payload.message))
+
+        logger.info("Generando respuesta IA (streaming) para usuario %d", payload.user_id)
+
+        async def token_generator():
+            """
+            Generador asíncrono que envía trozos de texto al cliente.
+
+            Si el cliente cierra la conexión (por ej. botón "Stop"), se interrumpe el bucle.
+            """
+            try:
+                # astream devuelve un async iterator de chunks (ChatGenerationChunk)
+                async for chunk in llm.astream(messages):
+                    # Si el cliente ha cerrado la conexión, cortamos.
+                    if await fastapi_request.is_disconnected():
+                        logger.info("Cliente desconectado, cancelando streaming de chat.")
+                        break
+
+                    content = getattr(chunk, "content", None)
+                    if not content:
+                        continue
+
+                    # Enviamos texto plano; el frontend se encarga del renderizado progresivo.
+                    yield content
+            except Exception as e:
+                logger.error("Error en streaming de chat: %s", e, exc_info=True)
+                # Enviamos un mensaje de error legible al usuario.
+                yield "\n[Error generando respuesta IA]"
+
+        return StreamingResponse(token_generator(), media_type="text/plain")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error en chat (stream): %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=500, detail=f"Error generando respuesta (stream): {str(e)}"
+        )
 
 
 def _build_chat_context(
     profile: Dict,
     rag_documents: Optional[List[str]] = None,
     detected_professor: Optional[str] = None,
+    last_feedback_positive: Optional[bool] = None,
 ) -> str:
     """Construye el prompt de sistema con RAG opcional."""
     context = """Eres un asistente inteligente especializado en ayudar a estudiantes universitarios a encontrar tema y tutor para su Trabajo de Fin de Grado (TFG).
@@ -503,11 +610,19 @@ Tu objetivo:
                 pass
         context += "\nIMPORTANTE: NO recomiendes profesores por nombre. Sugiere áreas y tipos de tutores.\n"
 
+    if last_feedback_positive is True:
+        context += "\n=== FEEDBACK DEL USUARIO ===\n"
+        context += "El usuario indicó que la última recomendación le fue útil. Mantén un estilo y enfoque similar.\n"
+    elif last_feedback_positive is False:
+        context += "\n=== FEEDBACK DEL USUARIO ===\n"
+        context += "El usuario indicó que la última recomendación no le fue útil. Adapta tu enfoque y propón alternativas diferentes.\n"
+
     context += """\n=== INSTRUCCIONES ===
 - Responde de forma concisa (3-6 líneas)
 - Usa SIEMPRE la información del perfil en tus recomendaciones
 - Si el perfil está incompleto, sugiere completarlo
 - Da respuestas concretas y prácticas
+- Estructura la respuesta en párrafos cortos y, cuando tenga sentido, usa listas con guiones.
 """
     return context
 

@@ -7,7 +7,7 @@ from chromadb.config import Settings
 import pandas as pd
 import logging
 
-from src.config.config import CSV_DIR, CHROMA_DIR, EMBEDDING_MODEL, COLLECTION_NAME
+from src.config.config import CSV_DIR, DEMO_CSV_DIR, CHROMA_DIR, EMBEDDING_MODEL, COLLECTION_NAME
 from src.utils.text_utils import normalize_text, generate_username
 
 logger = logging.getLogger(__name__)
@@ -36,7 +36,20 @@ class DataProcessorPandas:
         all_metadatas: List[Dict] = []
         all_embeddings: List[List[float]] = []
 
-        csv_files = list(CSV_DIR.glob("*.csv"))
+        csv_dirs = [CSV_DIR, DEMO_CSV_DIR]
+        csv_files = []
+        for d in csv_dirs:
+            if d.exists():
+                csv_files.extend(list(d.glob("*.csv")))
+        # Evitar duplicados y preferir data/csv sobre demo
+        seen = set()
+        ordered = []
+        for f in csv_files:
+            key = (f.parent.name, f.name)
+            if key not in seen:
+                seen.add(key)
+                ordered.append(f)
+        csv_files = ordered
         logger.info("Se encontraron %d archivos CSV", len(csv_files))
 
         for csv_file in csv_files:
@@ -79,44 +92,67 @@ class DataProcessorPandas:
         documents_text: List[str] = []
         metadatas: List[Dict] = []
 
-        nombre_profesor = csv_path.stem.replace("_", " ").title()
+        nombre_profesor_default = csv_path.stem.replace("_", " ").title()
+        has_profesor_col = "PROFESOR" in df.columns
 
-        campo_map = {
-            "TÍTULO": "Título",
-            "AUTORES": "Autores",
-            "TIPO": "Tipo",
-            "TIPO DE PRODUCCIÓN": "Tipo de producción",
-            "CATEGORÍAS": "Categorías",
-            "FUENTE": "Fuente",
-            "IF SJR": "Impacto SJR",
-            "Q SJR": "Cuartil SJR",
-        }
+        # Mapeo de columnas: estándar y alternativas (demo format)
+        def _get(row, *keys):
+            for k in keys:
+                if k not in df.columns:
+                    continue
+                val = row.get(k)
+                if val is None or (isinstance(val, float) and pd.isna(val)) or str(val).strip() == "":
+                    continue
+                return str(val).strip()
+            return ""
+
+        campo_map = [
+            ("TÍTULO", "TITULO", "Título"),
+            ("AUTORES", None, "Autores"),
+            ("TIPO", None, "Tipo"),
+            ("TIPO DE PRODUCCIÓN", "TIPO_PRODUCCION", "Tipo de producción"),
+            ("CATEGORÍAS", "CATEGORIAS", "Categorías"),
+            ("FUENTE", None, "Fuente"),
+            ("IF SJR", "IF_SJR", "Impacto SJR"),
+            ("Q SJR", "Q_SJR", "Cuartil SJR"),
+        ]
 
         for index, row in df.iterrows():
+            nombre_profesor = _get(row, "PROFESOR") if has_profesor_col else nombre_profesor_default
+            if not nombre_profesor:
+                nombre_profesor = nombre_profesor_default
+
             # Construcción del texto semántico
             partes = []
-            for col_csv, col_display in campo_map.items():
-                if col_csv in df.columns and row[col_csv]:
-                    partes.append(f"{col_display}: {row[col_csv]}")
+            for col1, col2, display in campo_map:
+                val = _get(row, col1) or (_get(row, col2) if col2 else "")
+                if val:
+                    partes.append(f"{display}: {val}")
 
             semantic_text = normalize_text(" ".join(partes))
 
             if not semantic_text:
                 continue
 
+            titulo = _get(row, "TÍTULO") or _get(row, "TITULO")
+            tipo_prod = _get(row, "TIPO DE PRODUCCIÓN") or _get(row, "TIPO_PRODUCCION")
+            categorias = _get(row, "CATEGORÍAS") or _get(row, "CATEGORIAS")
+            if_sjr = _get(row, "IF SJR") or _get(row, "IF_SJR")
+            q_sjr = _get(row, "Q SJR") or _get(row, "Q_SJR")
+
             # Metadatos normalizados
             metadata = {
                 "profesor": nombre_profesor,
                 "profesor_username": generate_username(nombre_profesor),
-                "titulo": normalize_text(str(row.get("TÍTULO", ""))),
-                "autores": str(row.get("AUTORES", "")),
-                "fecha": str(row.get("FECHA", "")),
-                "tipo": str(row.get("TIPO", "")),
-                "tipo_produccion": normalize_text(str(row.get("TIPO DE PRODUCCIÓN", ""))),
-                "categorias": normalize_text(str(row.get("CATEGORÍAS", ""))),
-                "fuente": str(row.get("FUENTE", "")),
-                "if_sjr": str(row.get("IF SJR", "")),
-                "q_sjr": str(row.get("Q SJR", "")),
+                "titulo": normalize_text(titulo),
+                "autores": _get(row, "AUTORES"),
+                "fecha": _get(row, "FECHA"),
+                "tipo": _get(row, "TIPO"),
+                "tipo_produccion": normalize_text(tipo_prod),
+                "categorias": normalize_text(categorias),
+                "fuente": _get(row, "FUENTE"),
+                "if_sjr": if_sjr,
+                "q_sjr": q_sjr,
                 "csv_file": csv_path.name,
                 "row_number": index,
             }

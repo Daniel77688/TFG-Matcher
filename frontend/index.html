@@ -25,7 +25,7 @@
                 <button class="nav-btn" onclick="loadPage('compare')" aria-label="Ir a Comparar">📊 Comparar</button>
                 <button class="nav-btn" onclick="loadPage('recommendations')" aria-label="Ir a Recomendaciones">💡 Recomendaciones</button>
                 <div class="profile-dropdown">
-                    <button class="profile-btn" id="profileBtn" onclick="toggleProfileMenu()" aria-haspopup="true" aria-expanded="false">👤 <span id="usernameDisplay">Usuario</span></button>
+                    <button class="profile-btn" id="profileBtn" onclick="toggleProfileMenu()" aria-haspopup="true" aria-expanded="false"><span id="headerAvatar">👤</span> <span id="usernameDisplay">Usuario</span></button>
                     <div class="dropdown-menu" id="profileMenu" role="menu">
                         <a href="#" role="menuitem" onclick="loadPage('profile'); toggleProfileMenu(); return false;">👤 Mi Perfil</a>
                         <a href="#" role="menuitem" onclick="loadPage('history'); toggleProfileMenu(); return false;">📜 Historial</a>
@@ -41,46 +41,97 @@
     <main class="main-content" id="mainContent" role="main">
         <!-- Login/Register -->
         <div id="authPage" class="page">
-            <div class="auth-container">
-                <h1 class="main-title">🎓 TFG Scraper Pro</h1>
-                <p class="subtitle">Tu asistente para encontrar el tutor perfecto</p>
-                
-                <div class="tabs" role="tablist">
-                    <button class="tab-btn active" role="tab" aria-selected="true" onclick="switchTab('login')">🔑 Iniciar Sesión</button>
-                    <button class="tab-btn" role="tab" aria-selected="false" onclick="switchTab('register')">📝 Crear Cuenta</button>
+            <div class="auth-wrapper">
+                <div class="auth-container overlay-layout" id="authContainer">
+                    <!-- Panel de formularios -->
+                    <div class="auth-form-panel sign-in-panel">
+                        <h1 class="main-title">🎓 TFG Scraper Pro</h1>
+                        <p class="subtitle">Tu copiloto inteligente para elegir tutor y tema de TFG</p>
+                        <form id="loginForm" class="auth-form" onsubmit="event.preventDefault(); login();">
+                            <label for="loginUsername" class="sr-only">Usuario</label>
+                            <input type="text" id="loginUsername" placeholder="Usuario" required autocomplete="username">
+                            <label for="loginPassword" class="sr-only">Contraseña</label>
+                            <input type="password" id="loginPassword" placeholder="Contraseña" required autocomplete="current-password">
+                            <button type="submit" class="btn-primary">Iniciar sesión</button>
+                        </form>
+                    </div>
+
+                    <div class="auth-form-panel sign-up-panel">
+                        <h1 class="main-title">Crea tu cuenta</h1>
+                        <p class="subtitle">Personaliza tu perfil y deja que la IA te recomiende el mejor tutor</p>
+                        <form id="registerForm" class="auth-form" onsubmit="event.preventDefault(); register();">
+                            <label for="regUsername" class="sr-only">Usuario</label>
+                            <input type="text" id="regUsername" placeholder="Usuario" required autocomplete="username">
+                            <label for="regEmail" class="sr-only">Email</label>
+                            <input type="email" id="regEmail" placeholder="Email universitario" required autocomplete="email">
+                            <label for="regPassword" class="sr-only">Contraseña</label>
+                            <input type="password" id="regPassword" placeholder="Contraseña segura (mín. 8 caracteres)" required autocomplete="new-password">
+                            <label for="regPassword2" class="sr-only">Confirmar Contraseña</label>
+                            <input type="password" id="regPassword2" placeholder="Repite la contraseña" required autocomplete="new-password">
+                            <button type="submit" class="btn-primary">Crear cuenta</button>
+                        </form>
+                    </div>
+
+                    <!-- Panel deslizante granate -->
+                    <div class="auth-overlay-container" aria-hidden="true">
+                        <div class="auth-overlay">
+                            <div class="overlay-panel overlay-left">
+                                <h2>¿Ya tienes cuenta?</h2>
+                                <p>Accede a tu panel para explorar tutores, estadísticas y recomendaciones personalizadas.</p>
+                                <button class="btn-outline" onclick="switchTab('login'); return false;">🔑 Iniciar sesión</button>
+                            </div>
+                            <div class="overlay-panel overlay-right">
+                                <h2>Bienvenido a TFG Scraper</h2>
+                                <p>Regístrate en segundos y deja que el sistema encuentre el tutor y el tema perfecto para ti.</p>
+                                <button class="btn-outline" onclick="switchTab('register'); return false;">📝 Crear cuenta</button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-
-                <form id="loginForm" class="auth-form" onsubmit="event.preventDefault(); login();">
-                    <label for="loginUsername" class="sr-only">Usuario</label>
-                    <input type="text" id="loginUsername" placeholder="Usuario" required autocomplete="username">
-                    <label for="loginPassword" class="sr-only">Contraseña</label>
-                    <input type="password" id="loginPassword" placeholder="Contraseña" required autocomplete="current-password">
-                    <button type="submit" class="btn-primary">Entrar</button>
-                </form>
-
-                <form id="registerForm" class="auth-form" style="display: none;" onsubmit="event.preventDefault(); register();">
-                    <label for="regUsername" class="sr-only">Usuario</label>
-                    <input type="text" id="regUsername" placeholder="Usuario" required autocomplete="username">
-                    <label for="regEmail" class="sr-only">Email</label>
-                    <input type="email" id="regEmail" placeholder="Email" required autocomplete="email">
-                    <label for="regPassword" class="sr-only">Contraseña</label>
-                    <input type="password" id="regPassword" placeholder="Contraseña (mín. 8 caracteres, mayúscula, minúscula, número)" required autocomplete="new-password">
-                    <label for="regPassword2" class="sr-only">Confirmar Contraseña</label>
-                    <input type="password" id="regPassword2" placeholder="Confirmar Contraseña" required autocomplete="new-password">
-                    <button type="submit" class="btn-primary">Registrarse</button>
-                </form>
             </div>
         </div>
 
         <!-- Home Page -->
         <div id="homePage" class="page" style="display: none;">
-            <h1 class="main-title">📊 Dashboard</h1>
-            <div class="stats-grid" id="statsGrid">
-                <!-- Stats se cargarán aquí -->
-            </div>
-            <div id="infoLists" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 2rem;">
-                <!-- Listas se cargarán aquí -->
-            </div>
+            <section class="home-hero">
+                <div class="home-hero-content">
+                    <span class="badge">Nuevo · Asistente IA para TFG</span>
+                    <h1>Encuentra el tutor y el tema perfecto para tu TFG</h1>
+                    <p>Explora el histórico real de publicaciones de la URJC, compara profesores, genera ideas con IA y recibe recomendaciones personalizadas según tu perfil.</p>
+                    <div class="home-hero-actions">
+                        <button class="btn-primary" onclick="loadPage('search')">🔍 Empezar a buscar tutores</button>
+                        <button class="btn-secondary" onclick="loadPage('chat')">🤖 Hablar con el asistente</button>
+                    </div>
+                    <div class="home-hero-meta">
+                        <div><strong>Rápido</strong><span>Respuestas en tiempo real con IA streaming</span></div>
+                        <div><strong>Preciso</strong><span>Basado en publicaciones científicas reales</span></div>
+                        <div><strong>Personalizado</strong><span>Adaptado a tus intereses y habilidades</span></div>
+                    </div>
+                </div>
+                <div class="home-hero-card">
+                    <div class="hero-card-header">
+                        <span>Panel TFG · Demo</span>
+                        <span class="hero-dot"></span>
+                    </div>
+                    <ul class="hero-card-list">
+                        <li><span>✔️ Recomendaciones de tutores según tu perfil</span></li>
+                        <li><span>✔️ Ranking de disponibilidad estimada</span></li>
+                        <li><span>✔️ Ideas de TFG generadas con IA</span></li>
+                        <li><span>✔️ Comparativa visual entre profesores</span></li>
+                    </ul>
+                    <p class="hero-hint">Completa tu perfil para desbloquear todo el potencial del sistema.</p>
+                </div>
+            </section>
+
+            <section class="home-dashboard">
+                <h2 class="section-title">Visión general de la base de datos</h2>
+                <div class="stats-grid" id="statsGrid">
+                    <!-- Stats se cargarán aquí -->
+                </div>
+                <div id="infoLists" class="info-lists-grid">
+                    <!-- Listas y gráficos se cargarán aquí -->
+                </div>
+            </section>
         </div>
 
         <!-- Search Page -->
@@ -138,7 +189,8 @@
             <div class="chat-input-container">
                 <label for="chatInput" class="sr-only">Mensaje para el asistente</label>
                 <input type="text" id="chatInput" placeholder="Pregunta sobre TFG, tutores, ideas de proyectos..." class="chat-input">
-                <button class="btn-primary" onclick="sendChatMessage()">Enviar</button>
+                <button class="btn-primary" id="chatSendBtn" onclick="sendChatMessage()">Enviar</button>
+                <button class="btn-secondary btn-stop" id="stopGeneratingBtn" onclick="stopGenerating()" style="display:none;">⏹ Stop</button>
             </div>
         </div>
 
@@ -153,9 +205,20 @@
             <h1 class="main-title">👤 Mi Perfil</h1>
             <div class="profile-container">
                 <div class="profile-sidebar">
-                    <div id="profileAvatar" class="avatar" aria-hidden="true"></div>
+                    <div id="profileAvatar" class="avatar avatar-emoji" aria-hidden="true"></div>
                     <h3 id="profileUsername"></h3>
                     <p id="profileEmail"></p>
+                    <div class="avatar-selector">
+                        <span class="avatar-selector-label">Foto de perfil</span>
+                        <div class="avatar-options" id="avatarOptions"></div>
+                    </div>
+                    <div class="profile-tutorial-options">
+                        <button class="btn-link profile-tutorial-btn" onclick="startTour(true)">🎬 Ver tutorial</button>
+                        <label class="profile-tutorial-checkbox">
+                            <input type="checkbox" id="profileShowTutorialOnLogin">
+                            <span>Mostrar tutorial al iniciar sesión</span>
+                        </label>
+                    </div>
                     <button class="btn-secondary" onclick="logout()">🚪 Cerrar Sesión</button>
                 </div>
                 <form class="profile-form" onsubmit="event.preventDefault(); saveProfile();">

@@ -7,6 +7,8 @@ load_dotenv()
 # ── Rutas del proyecto ──────────────────────────────────────────────
 BASE_DIR = Path(__file__).parent.parent.parent
 CSV_DIR = BASE_DIR / "data" / "csv"
+# Directorio demo (fallback cuando data/csv está vacío)
+DEMO_CSV_DIR = BASE_DIR / "frontend" / "static" / "data"
 CHROMA_DIR = BASE_DIR / "chroma_db"
 DB_PATH = BASE_DIR / "users.db"
 

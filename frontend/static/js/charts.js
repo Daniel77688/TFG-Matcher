@@ -35,10 +35,19 @@ function destroyChart(canvasId) {
 export function renderPublicationsByYear(canvasId, stats) {
     destroyChart(canvasId);
     const canvas = document.getElementById(canvasId);
-    if (!canvas || !stats?.años_publicacion) return;
+    if (!canvas) return;
 
-    const years = Object.keys(stats.años_publicacion).sort();
-    const counts = years.map(y => stats.años_publicacion[y]);
+    const añosData = stats?.años_publicacion || {};
+    const years = Object.keys(añosData).sort();
+    const counts = years.map(y => añosData[y]);
+
+    if (years.length === 0) {
+        const parent = canvas.parentElement;
+        if (parent) {
+            parent.innerHTML = '<p class="chart-empty-msg">Sin datos por año</p>';
+        }
+        return;
+    }
 
     chartInstances[canvasId] = new Chart(canvas, {
         type: 'bar',
@@ -77,11 +86,20 @@ export function renderPublicationsByYear(canvasId, stats) {
 export function renderCategoriesPie(canvasId, stats) {
     destroyChart(canvasId);
     const canvas = document.getElementById(canvasId);
-    if (!canvas || !stats?.categorias_populares) return;
+    if (!canvas) return;
 
-    const entries = Object.entries(stats.categorias_populares).slice(0, 8);
+    const categoriasData = stats?.categorias_populares || {};
+    const entries = Object.entries(categoriasData).slice(0, 8);
     const labels = entries.map(([k]) => k.length > 25 ? k.slice(0, 22) + '...' : k);
     const data = entries.map(([, v]) => v);
+
+    if (entries.length === 0) {
+        const parent = canvas.parentElement;
+        if (parent) {
+            parent.innerHTML = '<p class="chart-empty-msg">Sin categorías</p>';
+        }
+        return;
+    }
 
     chartInstances[canvasId] = new Chart(canvas, {
         type: 'doughnut',

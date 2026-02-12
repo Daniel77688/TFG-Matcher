@@ -286,6 +286,7 @@ class SearchEngine:
                 "total_profesores": 0,
                 "tipos_produccion": {},
                 "años_cubiertos": [],
+                "años_publicacion": {},
                 "categorias_populares": {},
             }
             self._stats_cache = empty_stats
@@ -294,6 +295,7 @@ class SearchEngine:
 
         tipos_produccion: Dict[str, int] = {}
         años: set = set()
+        años_publicacion: Dict[str, int] = {}
         categorias: Dict[str, int] = {}
         profesores: set = set()
 
@@ -303,7 +305,9 @@ class SearchEngine:
 
             if metadata.get(KEY_FECHA):
                 try:
-                    años.add(metadata[KEY_FECHA][:4])
+                    y = metadata[KEY_FECHA][:4]
+                    años.add(y)
+                    años_publicacion[y] = años_publicacion.get(y, 0) + 1
                 except (IndexError, TypeError):
                     pass
 
@@ -320,6 +324,9 @@ class SearchEngine:
                 sorted(tipos_produccion.items(), key=lambda x: x[1], reverse=True)
             ),
             "años_cubiertos": sorted(list(años), reverse=True),
+            "años_publicacion": dict(
+                sorted(años_publicacion.items(), key=lambda x: x[0], reverse=True)
+            ),
             "categorias_populares": dict(
                 sorted(categorias.items(), key=lambda x: x[1], reverse=True)[:10]
             ),

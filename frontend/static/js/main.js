@@ -5,6 +5,8 @@ import * as chat from './chat.js';
 import { api } from './api.js';
 import { showNotification, escapeHtml, showLoading } from './ui.js';
 import { renderPublicationsByYear, renderCategoriesPie, renderProfessorRadar } from './charts.js';
+import { startTour, shouldShowOnLogin, setShowOnLogin } from './tour.js';
+import { AVATAR_OPTIONS, DEFAULT_AVATAR, getStoredAvatar, setStoredAvatar } from './avatars.js';
 
 // ========== EXPOSE TO WINDOW (for legacy HTML onclick) ==========
 window.loadPage = loadPage;
@@ -18,7 +20,6 @@ window.searchByTheme = searchByTheme;
 window.searchByProfessor = searchByProfessor;
 window.viewProfessorDetail = viewProfessorDetail;
 window.closeProfessorModal = closeProfessorModal;
-window.contactProfessor = contactProfessor;
 window.addToComparison = addToComparison;
 window.removeFromComparison = removeFromComparison;
 window.sendChatMessage = sendChatMessage;
@@ -27,6 +28,10 @@ window.saveProfile = saveProfile;
 window.clearHistory = clearHistory;
 window.exportResults = exportResults;
 window.toggleDarkMode = toggleDarkMode;
+window.stopGenerating = stopGenerating;
+window.setChatFeedback = setChatFeedback;
+window.selectAvatar = selectAvatar;
+window.startTour = (force) => startTour(force ?? true);
 
 // ========== INITIALIZATION ==========
 document.addEventListener('DOMContentLoaded', async () => {
@@ -94,7 +99,11 @@ function showApp() {
     document.getElementById('authPage').style.display = 'none';
     document.querySelector('.header').style.display = 'block';
     document.getElementById('usernameDisplay').textContent = state.currentUser.username;
+    updateHeaderAvatar();
     loadPage('home');
+    if (shouldShowOnLogin()) {
+        setTimeout(() => startTour(), 500);
+    }
 }
 
 function loadPage(page) {
@@ -111,7 +120,7 @@ function loadPage(page) {
     }
 
     // Nav-btn highlighting
-    const navIndices = { home: 0, search: 1, chat: 2, compare: 3 };
+    const navIndices = { home: 0, search: 1, chat: 2, compare: 3, recommendations: 4 };
     if (page in navIndices) {
         const btn = document.querySelectorAll('.nav-btn')[navIndices[page]];
         if (btn) btn.classList.add('active');
@@ -154,11 +163,15 @@ async function register() {
 }
 
 function switchTab(tab) {
-    document.getElementById('loginForm').style.display = tab === 'login' ? 'block' : 'none';
-    document.getElementById('registerForm').style.display = tab === 'register' ? 'block' : 'none';
-    document.querySelectorAll('.tab-btn').forEach((btn, idx) => {
-        btn.classList.toggle('active', (tab === 'login' && idx === 0) || (tab === 'register' && idx === 1));
-    });
+    const container = document.getElementById('authContainer');
+    if (!container) return;
+
+    // Modo overlay: al activar "register" desplazamos el panel azul
+    if (tab === 'register') {
+        container.classList.add('active');
+    } else {
+        container.classList.remove('active');
+    }
 }
 
 function toggleProfileMenu() {
@@ -171,7 +184,10 @@ async function loadHome() {
     showLoading(grid);
 
     try {
-        const stats = await api.stats();
+        const [stats, rankingData] = await Promise.all([
+            api.stats(),
+            api.search.ranking().catch(() => [])
+        ]);
         grid.innerHTML = `
             <div class="stat-card">
                 <div class="stat-value">${stats.total_documents || 0}</div>
@@ -187,23 +203,60 @@ async function loadHome() {
             </div>
         `;
 
-        let html = '';
-        if (stats.tipos_produccion) {
-            html += renderInfoList('📊 Producción por Tipo', stats.tipos_produccion);
-        }
-        if (stats.categorias_populares) {
-            html += renderInfoList('🏷️ Categorías Populares', stats.categorias_populares);
-        }
-        lists.innerHTML = html;
+        // Dashboard unificado: gráficos + listas en una sola tarjeta
+        const tiposData = stats.tipos_produccion || {};
+        const categoriasData = stats.categorias_populares || {};
+        const tiposEntries = Object.entries(tiposData).slice(0, 8);
+        const categoriasEntries = Object.entries(categoriasData).slice(0, 8);
 
-        // Charts
-        const chartsHtml = `
-            <div class="charts-grid">
-                <div class="chart-card"><div class="chart-container" style="height:250px;"><canvas id="yearChart"></canvas></div></div>
-                <div class="chart-card"><div class="chart-container" style="height:250px;"><canvas id="categoriesChart"></canvas></div></div>
+        lists.innerHTML = `
+            <div class="dashboard-overview-card">
+                <div class="dashboard-charts-row">
+                    <div class="dashboard-chart-item">
+                        <div class="chart-container" style="height:220px;"><canvas id="yearChart"></canvas></div>
+                    </div>
+                    <div class="dashboard-chart-item">
+                        <div class="chart-container" style="height:220px;"><canvas id="categoriesChart"></canvas></div>
+                    </div>
+                </div>
+                <div class="dashboard-lists-row">
+                    <div class="dashboard-list-item">
+                        <h4 class="dashboard-list-title">📊 Producción por tipo</h4>
+                        <ul class="dashboard-list">
+                            ${tiposEntries.length ? tiposEntries.map(([k, v]) =>
+                                `<li><span>${k}</span><strong>${v}</strong></li>`
+                            ).join('') : '<li class="empty">Sin datos</li>'}
+                        </ul>
+                    </div>
+                    <div class="dashboard-list-item">
+                        <h4 class="dashboard-list-title">🏷️ Categorías populares</h4>
+                        <ul class="dashboard-list">
+                            ${categoriasEntries.length ? categoriasEntries.map(([k, v]) =>
+                                `<li><span>${k.length > 35 ? k.slice(0, 32) + '…' : k}</span><strong>${v}</strong></li>`
+                            ).join('') : '<li class="empty">Sin datos</li>'}
+                        </ul>
+                    </div>
+                </div>
+                ${Array.isArray(rankingData) && rankingData.length > 0 ? `
+                <div class="dashboard-ranking-row">
+                    <h4 class="dashboard-list-title">📈 Ranking de disponibilidad</h4>
+                    <p class="dashboard-ranking-hint">Estimación según publicaciones recientes. Alta = mayor disponibilidad estimada.</p>
+                    <div class="ranking-list">
+                        ${rankingData.slice(0, 10).map((p, i) => `
+                            <div class="ranking-item availability-${(p.availability_label || '').toLowerCase()}">
+                                <span class="ranking-pos">${i + 1}</span>
+                                <span class="ranking-name">${escapeHtml(p.profesor)}</span>
+                                <span class="ranking-badge">${p.availability_label || 'N/A'}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+                ` : ''}
+                <div class="dashboard-actions">
+                    <button class="btn-primary" onclick="loadPage('recommendations')">💡 Ver Recomendaciones</button>
+                </div>
             </div>
         `;
-        lists.insertAdjacentHTML('beforeend', chartsHtml);
 
         // Render charts after DOM update
         setTimeout(() => {
@@ -211,15 +264,9 @@ async function loadHome() {
             renderCategoriesPie('categoriesChart', stats);
         }, 100);
 
-        // Recommendations shortcuts
-        const div = document.createElement('div');
-        div.style.textAlign = 'center';
-        div.style.marginTop = '2rem';
-        div.innerHTML = `<button class="btn-primary" onclick="loadPage('recommendations')">💡 Ver Recomendaciones</button>`;
-        lists.appendChild(div);
-
     } catch (error) {
         grid.innerHTML = '<p class="error">Error cargando estadísticas</p>';
+        lists.innerHTML = '';
     }
 }
 
@@ -295,9 +342,8 @@ async function searchByProfessor() {
                     <div class="stat-item"><div class="stat-item-value">${profile.estadisticas.años_activo.length}</div>Años</div>
                 </div>
                 <div class="result-actions">
-                    <button class="btn-primary" onclick="viewProfessorDetail('${profile.profesor}')">📋 Perfil</button>
+                    <button class="btn-primary" onclick="viewProfessorDetail('${profile.profesor}')">👤 Ver Profesor</button>
                     <button class="btn-secondary" onclick="addToComparison('${profile.profesor}')">📊 Comparar</button>
-                    <button class="btn-link" onclick="contactProfessor('${profile.profesor}')">📧 Email</button>
                 </div>
             </div>
         `;
@@ -347,24 +393,26 @@ async function viewProfessorDetail(name) {
     const modal = document.getElementById('professorModal');
     const content = document.getElementById('professorModalContent');
     const stats = profile.estadisticas;
+    const email = search.getProfessorEmail(name);
+    const emailHtml = email
+        ? `<p class="professor-email">📧 <a href="mailto:${email}?subject=Consulta TFG">${email}</a></p>`
+        : '';
 
     content.innerHTML = `
-        <h2 style="color: #8B1538;">${profile.profesor}</h2>
+        <h2 style="color: var(--urjc-granate);">${profile.profesor}</h2>
         <div class="professor-stats">
             <div class="stat-item"><div class="stat-item-value">${stats.total_trabajos}</div>Trabajos</div>
             <div class="stat-item"><div class="stat-item-value">${stats.años_activo.length}</div>Años</div>
             <div class="stat-item"><div class="stat-item-value">${stats.categorias.length}</div>Categorías</div>
         </div>
+        ${emailHtml}
         <div style="margin-top: 1.5rem;">
             <h3>📚 Trabajos Recientes</h3>
             ${stats.trabajos_recientes.slice(0, 5).map(w => `
                 <div style="padding: 0.5rem; border-bottom: 1px solid #eee;">
-                    <strong>${w.titulo}</strong> (${w.fecha})
+                    <strong>${escapeHtml(w.titulo)}</strong> (${w.fecha})
                 </div>
             `).join('')}
-        </div>
-        <div style="margin-top: 1rem;">
-            <button class="btn-primary" onclick="contactProfessor('${profile.profesor}')">📧 Contactar</button>
         </div>
     `;
     modal.classList.add('show');
@@ -372,11 +420,6 @@ async function viewProfessorDetail(name) {
 
 function closeProfessorModal() {
     document.getElementById('professorModal').classList.remove('show');
-}
-
-function contactProfessor(name) {
-    const email = search.getProfessorEmail(name);
-    if (email) window.location.href = `mailto:${email}?subject=Consulta TFG`;
 }
 
 function addToComparison(name) {
@@ -433,11 +476,36 @@ function loadChatUI() {
     if (!state.chatHistory.length) {
         el.innerHTML = '<div class="chat-message assistant">¡Hola! ¿En qué puedo ayudarte con tu TFG?</div>';
     } else {
-        el.innerHTML = state.chatHistory.map(m => `
-            <div class="chat-message ${m.type}">${escapeHtml(m.content)}</div>
-        `).join('');
+        el.innerHTML = state.chatHistory.map((m, idx) => {
+            const isLastAssistant = m.type === 'assistant' && idx === state.chatHistory.length - 1;
+            const showFeedback = isLastAssistant && m.feedback === undefined && m.content;
+            return `
+                <div class="chat-msg-wrapper" data-msg-idx="${idx}">
+                    <div class="chat-message ${m.type}">${escapeHtml(m.content)}</div>
+                    ${showFeedback ? `
+                        <div class="chat-feedback">
+                            <span class="chat-feedback-label">¿Te fue útil esta recomendación?</span>
+                            <div class="chat-feedback-btns">
+                                <button class="chat-feedback-btn yes" onclick="setChatFeedback(${idx}, true)">👍 Sí</button>
+                                <button class="chat-feedback-btn no" onclick="setChatFeedback(${idx}, false)">👎 No</button>
+                                <button class="chat-feedback-btn skip" onclick="setChatFeedback(${idx}, null)">Prefiero no responder</button>
+                            </div>
+                        </div>
+                    ` : (isLastAssistant && m.feedback !== undefined ? `
+                        <div class="chat-feedback-done">${m.feedback === true ? '✓ Gracias por tu feedback' : m.feedback === false ? '✓ Entendido, adaptaré mis recomendaciones' : ''}</div>
+                    ` : '')}
+                </div>
+            `;
+        }).join('');
     }
     el.scrollTop = el.scrollHeight;
+}
+
+function setChatFeedback(msgIdx, value) {
+    if (state.chatHistory[msgIdx] && state.chatHistory[msgIdx].type === 'assistant') {
+        state.chatHistory[msgIdx].feedback = value;
+        loadChatUI();
+    }
 }
 
 async function sendChatMessage() {
@@ -445,24 +513,70 @@ async function sendChatMessage() {
     const msg = input.value.trim();
     if (!msg) return;
 
+    // Evitar que se lancen varias peticiones de chat en paralelo
+    if (state.isChatStreaming) {
+        showNotification('⚠️ Espera a que termine la respuesta actual o pulsa "Stop"', 'info');
+        return;
+    }
+
     state.chatHistory.push({ type: 'user', content: msg });
     loadChatUI();
     input.value = '';
 
     const container = document.getElementById('chatContainer');
-    const thinking = document.createElement('div');
-    thinking.className = 'chat-message assistant';
-    thinking.textContent = '🤔 Pensando...';
-    container.appendChild(thinking);
+    // Creamos un mensaje del asistente que iremos rellenando progresivamente
+    const assistantMsgEl = document.createElement('div');
+    assistantMsgEl.className = 'chat-message assistant';
+    assistantMsgEl.textContent = '...';
+    container.appendChild(assistantMsgEl);
     container.scrollTop = container.scrollHeight;
 
-    const response = await chat.sendChatMessage(msg);
-    thinking.remove();
-
-    if (response) {
-        state.chatHistory.push({ type: 'assistant', content: response });
-        loadChatUI();
+    // Actualizamos estado de botones (enviar / stop)
+    const sendBtn = document.getElementById('chatSendBtn');
+    const stopBtn = document.getElementById('stopGeneratingBtn');
+    if (sendBtn) {
+        sendBtn.disabled = true;
+        sendBtn.textContent = 'Generando...';
     }
+    if (stopBtn) {
+        stopBtn.style.display = 'inline-flex';
+    }
+
+    let accumulated = '';
+
+    const lastAssistantFeedback = (() => {
+        for (let i = state.chatHistory.length - 2; i >= 0; i--) {
+            if (state.chatHistory[i].type === 'assistant') {
+                return state.chatHistory[i].feedback;
+            }
+        }
+        return undefined;
+    })();
+
+    await chat.startChatStreaming(msg, {
+        lastFeedbackPositive: lastAssistantFeedback === true ? true : lastAssistantFeedback === false ? false : undefined,
+        onChunk: (_chunk, fullText) => {
+            accumulated = fullText;
+            assistantMsgEl.textContent = fullText;
+            container.scrollTop = container.scrollHeight;
+        },
+        onComplete: (fullText, { aborted }) => {
+            if (fullText) {
+                state.chatHistory.push({ type: 'assistant', content: fullText });
+            }
+            if (aborted && fullText) {
+                assistantMsgEl.textContent = fullText + '\n\n[Respuesta interrumpida por el usuario]';
+            }
+            if (sendBtn) {
+                sendBtn.disabled = false;
+                sendBtn.textContent = 'Enviar';
+            }
+            if (stopBtn) {
+                stopBtn.style.display = 'none';
+            }
+            loadChatUI();
+        }
+    });
 }
 
 function clearChat() {
@@ -470,7 +584,52 @@ function clearChat() {
     loadChatUI();
 }
 
+function stopGenerating() {
+    if (!state.isChatStreaming) return;
+    chat.stopChatStreaming();
+}
+
 // PROFILE
+function renderProfileAvatar(avatarEl, emoji) {
+    if (!avatarEl) return;
+    avatarEl.textContent = emoji || DEFAULT_AVATAR;
+    avatarEl.className = 'avatar avatar-emoji';
+}
+
+function renderAvatarOptions(containerEl, selectedEmoji, userId) {
+    if (!containerEl) return;
+    containerEl.innerHTML = AVATAR_OPTIONS.map(emoji => `
+        <button type="button" class="avatar-option ${emoji === selectedEmoji ? 'selected' : ''}" 
+                data-avatar="${emoji}" 
+                onclick="selectAvatar('${emoji}')"
+                aria-label="Seleccionar ${emoji}"
+                title="Seleccionar avatar">
+            ${emoji}
+        </button>
+    `).join('');
+}
+
+function selectAvatar(emoji) {
+    if (!state.currentUser) return;
+    setStoredAvatar(state.currentUser.id, emoji);
+    const avatarEl = document.getElementById('profileAvatar');
+    const options = document.querySelectorAll('.avatar-option');
+    renderProfileAvatar(avatarEl, emoji);
+    options.forEach(btn => {
+        btn.classList.toggle('selected', btn.dataset.avatar === emoji);
+    });
+    updateHeaderAvatar();
+}
+
+function updateHeaderAvatar() {
+    if (!state.currentUser) return;
+    const avatar = getStoredAvatar(state.currentUser.id);
+    const span = document.getElementById('headerAvatar');
+    const usernameSpan = document.getElementById('usernameDisplay');
+    if (span) span.textContent = avatar;
+    if (usernameSpan) usernameSpan.textContent = state.currentUser.username;
+}
+
 async function loadProfile() {
     try {
         const p = await api.profile.get(state.currentUser.id);
@@ -482,6 +641,16 @@ async function loadProfile() {
         document.getElementById('profileInterests').value = p.interests || '';
         document.getElementById('profileSkills').value = p.skills || '';
         document.getElementById('profileAreas').value = p.preferred_areas || '';
+
+        const avatar = getStoredAvatar(state.currentUser.id);
+        renderProfileAvatar(document.getElementById('profileAvatar'), avatar);
+        renderAvatarOptions(document.getElementById('avatarOptions'), avatar, state.currentUser.id);
+
+        const showTutorialCb = document.getElementById('profileShowTutorialOnLogin');
+        if (showTutorialCb) {
+            showTutorialCb.checked = shouldShowOnLogin();
+            showTutorialCb.onchange = () => setShowOnLogin(showTutorialCb.checked);
+        }
 
         const history = await api.history.get(state.currentUser.id);
         document.getElementById('historyList').innerHTML = history.map(h => `

@@ -1,0 +1,8 @@
+profesor,titulo,fecha,tipo_produccion,categorias,if_sjr,q_sjr,fuente
+"María López García","Aplicaciones de Deep Learning para la predicción de series temporales",2023,"Artículo","Inteligencia Artificial; Deep Learning; Predicción",2.7,"Q1","Scopus"
+"María López García","Sistema de recomendación para TFG basado en embeddings semánticos",2024,"Conferencia","Recomendadores; Educación; NLP",1.8,"Q2","Scopus"
+"Carlos Pérez Martín","Detección de intrusiones en redes 5G mediante aprendizaje automático",2022,"Artículo","Ciberseguridad; Redes; Machine Learning",3.1,"Q1","Scopus"
+"Laura Sánchez Ruiz","Arquitecturas serverless para aplicaciones web de alta concurrencia",2021,"Conferencia","Desarrollo Web; Cloud; Arquitectura de Software",1.2,"Q3","Scopus"
+"Javier Gómez Ortega","Optimización de controladores de vuelo mediante algoritmos genéticos",2020,"Artículo","Sistemas Embebidos; Algoritmos Evolutivos",2.1,"Q2","Scopus"
+"Ana Martín Delgado","Modelos de riesgo de crédito basados en árboles de decisión",2019,"Artículo","Finanzas; Ciencia de Datos",1.5,"Q2","Scopus"
+

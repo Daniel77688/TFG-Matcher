@@ -35,7 +35,8 @@ export const api = {
     search: {
         general: (params) => request('/search', { method: 'POST', body: JSON.stringify(params) }),
         professor: (name) => request(`/professor/${encodeURIComponent(name)}`),
-        recommendations: (userId, limit = 15) => request(`/recommendations/${userId}?limit=${limit}`)
+        recommendations: (userId, limit = 15) => request(`/recommendations/${userId}?limit=${limit}`),
+        ranking: () => request('/professors/ranking')
     },
     chat: {
         send: (payload) => request('/chat', { method: 'POST', body: JSON.stringify(payload) })
